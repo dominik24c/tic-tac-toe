@@ -7,7 +7,8 @@ from typing import Union
 from .board import Board
 from .config import *
 from .exceptions import OnlyTwoPlayersInGameException, InvalidObjectPassed, CoordinatesOfBoardOutOfRangeException, \
-    InvalidValueOfFieldException, FieldIsNotEmptyException, PlayerException, IsNotYourMoveException, ExitGameException
+    InvalidValueOfFieldException, FieldIsNotEmptyException, PlayerException, IsNotYourMoveException, GameOverException, \
+    DrawException, PlayerOIsWinnerException, PlayerXIsWinnerException
 from .player import Player
 
 
@@ -50,10 +51,15 @@ class Game:
         for player in self.__players_tasks:
             player.cancel()
 
+    def trigger_move_of_player(self) -> None:
+        self.__players[1].unset_your_move()
+        self.__players[0].set_your_move()
+
     async def run(self) -> None:
         self.draw_the_order_of_players()
 
         await self._run_players()
+        self.trigger_move_of_player()
 
         while self.__running:
             print("in game")
@@ -66,7 +72,10 @@ class Game:
     def _check_result_of_game_by_rows_or_columns(self, res: set, figure: Union[M_X, M_O]) -> None:
         if len(res) == 1 and figure in res:
             print(f'Winner is {figure}')
-            raise ExitGameException()
+            if figure == M_X:
+                raise PlayerXIsWinnerException()
+            else:
+                raise PlayerOIsWinnerException()
 
     def _is_end_of_game(self, figure_of_player: Union[M_X, M_O]) -> None:
         fields = self.__board.get_fields()
@@ -74,7 +83,7 @@ class Game:
         for i in range(SIZE_OF_BOARD):
             # checking by rows
             self._check_result_of_game_by_rows_or_columns(set(fields[i]), figure_of_player)
-            # checking by columnsconvert
+            # checking by columns
             self._check_result_of_game_by_rows_or_columns({fields[0][i], fields[1][i], fields[2][i]}, figure_of_player)
 
         # checking by diagonally
@@ -82,8 +91,7 @@ class Game:
         self._check_result_of_game_by_rows_or_columns({fields[0][2], fields[1][1], fields[2][0]}, figure_of_player)
 
         if None not in list(chain(*fields)):
-            print('DRAW')
-            raise ExitGameException()
+            raise DrawException()
 
     async def legal_move(self, figure: str, id: str, x: int, y: int) -> None:
         async with self.__lock:
@@ -100,11 +108,13 @@ class Game:
                 self.__board.set_field(x, y, figure)
                 self._is_end_of_game(figure)
                 self.next_player()
+                self.trigger_move_of_player()
                 print('succeed')
-            except ExitGameException:
+            except GameOverException as e:
                 self.__running = False
+                print(f'{e.__class__.__name__.replace("Exception","")}')
                 print("END GAME")
             except PlayerException as e:
-                # print(e.__class__)
+                print(e.__class__.__name__)
                 # print('error')
                 pass
